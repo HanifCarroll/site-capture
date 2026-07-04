@@ -1,7 +1,7 @@
 .PHONY: test install-local build
 
 test:
-	python -m unittest discover -s tests
+	PYTHONPATH=src python -m unittest discover -s tests
 
 install-local:
 	python -m pip install --upgrade --force-reinstall .

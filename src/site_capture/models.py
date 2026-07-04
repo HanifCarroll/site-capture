@@ -5,6 +5,12 @@ from pathlib import Path
 
 
 VALID_FORMATS = {"screenshot", "markdown", "html"}
+FORMAT_ALIASES = {
+    "md": "markdown",
+    "png": "screenshot",
+    "screen": "screenshot",
+    "shot": "screenshot",
+}
 
 
 @dataclass(frozen=True)

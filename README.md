@@ -107,6 +107,8 @@ captures/example/
 
 `index.md` gives a human-readable table of captured pages and artifact links. In `pages.jsonl`, artifact paths are relative to the capture root so the folder can be moved.
 
+On reruns, existing successful pages are reused unless `--force` is passed. Crawl output distinguishes `page_count`, fresh `captured_count`, and `reused_count`; each ledger row includes `source: "captured"` or `source: "reused"`.
+
 ## JSON Policy
 
 `--json` writes JSON to stdout. Progress goes to stderr. Error output follows this shape:
@@ -125,6 +127,8 @@ The CLI never prints tokens or cookies intentionally. Captured page artifacts ma
 - `markdown`: Playwriter `getPageMarkdown` output when using the Playwriter driver; deterministic rendered-HTML conversion when using the Playwright driver.
 - `html`: rendered HTML.
 
+Aliases are accepted: `md` for `markdown`, `png` for `screenshot`, and `all` for every format.
+
 Default:
 
 ```sh
@@ -140,7 +144,7 @@ The crawler is intentionally bounded. Use `--max-pages`, `--delay-ms`, and `--al
 ## Development
 
 ```sh
-python -m unittest discover -s tests
+make test
 site-capture --help
 site-capture --json doctor
 ```
