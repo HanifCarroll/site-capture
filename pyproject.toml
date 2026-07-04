@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "site-capture"
+version = "0.1.0"
+description = "Capture websites into screenshots, Markdown, HTML, and JSON ledgers for agent workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Hanif Carroll" }]
+keywords = ["crawler", "playwriter", "playwright", "agents", "screenshots", "markdown"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Internet :: WWW/HTTP :: Browsers",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+playwright = ["playwright>=1.45"]
+dev = []
+
+[project.scripts]
+site-capture = "site_capture.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/HanifCarroll/site-capture"
+Repository = "https://github.com/HanifCarroll/site-capture"
+Issues = "https://github.com/HanifCarroll/site-capture/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+site_capture = ["drivers/capture_playwriter.js"]
