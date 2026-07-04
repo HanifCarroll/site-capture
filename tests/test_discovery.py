@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from site_capture.discovery import filter_http_urls, normalize_url, read_sitemap, same_origin
+from site_capture.discovery import discover_urls, filter_http_urls, normalize_url, read_sitemap, same_origin
 
 
 SITEMAP = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -50,6 +50,14 @@ class DiscoveryTests(unittest.TestCase):
             read_sitemap("https://example.com/sitemap.xml"),
             ["https://example.com/", "https://example.com/about"],
         )
+
+    @patch("site_capture.discovery.fetch_bytes")
+    def test_missing_robots_and_sitemap_are_notices(self, fetch_bytes) -> None:
+        fetch_bytes.side_effect = [RuntimeError("HTTP 404"), RuntimeError("HTTP 404")]
+        result = discover_urls("https://example.com", max_pages=1)
+        self.assertEqual(result.urls, ["https://example.com/"])
+        self.assertEqual(result.warnings, [])
+        self.assertEqual(len(result.notices), 3)
 
 
 if __name__ == "__main__":

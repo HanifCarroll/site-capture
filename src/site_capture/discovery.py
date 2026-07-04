@@ -17,6 +17,7 @@ class DiscoveryResult:
     urls: list[str]
     sitemap_urls: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)
 
 
 def normalize_url(url: str) -> str:
@@ -59,14 +60,16 @@ def filter_http_urls(urls: list[str], *, base_url: str | None = None, same_origi
 def discover_urls(start_url: str, *, sitemap_url: str | None = None, max_pages: int = 200, timeout: int = 20) -> DiscoveryResult:
     start = normalize_url(start_url)
     warnings: list[str] = []
+    notices: list[str] = []
     sitemap_urls: list[str] = []
     candidates: list[str] = []
     if sitemap_url:
         candidates.append(normalize_url(sitemap_url))
     else:
-        robots_sitemaps, robots_warnings = discover_sitemaps_from_robots(start, timeout=timeout)
+        robots_sitemaps, robots_warnings, robots_notices = discover_sitemaps_from_robots(start, timeout=timeout)
         sitemap_urls.extend(robots_sitemaps)
         warnings.extend(robots_warnings)
+        notices.extend(robots_notices)
         candidates.extend(robots_sitemaps)
         candidates.append(urljoin(start, "/sitemap.xml"))
 
@@ -80,31 +83,39 @@ def discover_urls(start_url: str, *, sitemap_url: str | None = None, max_pages: 
         try:
             urls.extend(read_sitemap(candidate, timeout=timeout))
         except Exception as exc:  # noqa: BLE001 - command output should retain the exact cause.
-            warnings.append(f"Could not read sitemap {candidate}: {exc}")
+            message = f"Could not read sitemap {candidate}: {exc}"
+            if "HTTP 404" in str(exc):
+                notices.append(message)
+            else:
+                warnings.append(message)
         if len(urls) >= max_pages:
             break
 
     filtered = filter_http_urls(urls, base_url=start, same_origin_only=True)
     if not filtered:
         filtered = [start]
-        warnings.append("No sitemap URLs found; seeded crawl with the start URL.")
-    return DiscoveryResult(urls=filtered[:max_pages], sitemap_urls=dedupe(sitemap_urls), warnings=warnings)
+        notices.append("No sitemap URLs found; seeded crawl with the start URL.")
+    return DiscoveryResult(urls=filtered[:max_pages], sitemap_urls=dedupe(sitemap_urls), warnings=warnings, notices=notices)
 
 
-def discover_sitemaps_from_robots(start_url: str, *, timeout: int = 20) -> tuple[list[str], list[str]]:
+def discover_sitemaps_from_robots(start_url: str, *, timeout: int = 20) -> tuple[list[str], list[str], list[str]]:
     parsed = urlparse(normalize_url(start_url))
     robots_url = urlunparse((parsed.scheme, parsed.netloc, "/robots.txt", "", "", ""))
     warnings: list[str] = []
+    notices: list[str] = []
     try:
         text = fetch_bytes(robots_url, timeout=timeout).decode("utf-8", errors="replace")
     except Exception as exc:  # noqa: BLE001 - discovery should continue without robots.txt.
-        return [], [f"Could not read robots.txt at {robots_url}: {exc}"]
+        message = f"Could not read robots.txt at {robots_url}: {exc}"
+        if "HTTP 404" in str(exc):
+            return [], warnings, [message]
+        return [], [message], notices
     urls: list[str] = []
     for line in text.splitlines():
         match = re.match(r"^\s*sitemap\s*:\s*(\S+)\s*$", line, flags=re.IGNORECASE)
         if match:
             urls.append(normalize_url(match.group(1)))
-    return dedupe(urls), warnings
+    return dedupe(urls), warnings, notices
 
 
 def read_sitemap(sitemap_url: str, *, timeout: int = 20, max_sitemaps: int = 50) -> list[str]:

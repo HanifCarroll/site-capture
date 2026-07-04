@@ -34,6 +34,8 @@ site-capture capture https://example.com --out ./captures/example-home
 site-capture crawl https://example.com --out ./captures/example --max-pages 100
 ```
 
+If `--out` is omitted, `capture` and `crawl` write to `./captures/<host>-<command>-<timestamp>`.
+
 Use Playwriter explicitly:
 
 ```sh
@@ -102,6 +104,8 @@ captures/example/
   "session": "1"
 }
 ```
+
+`index.md` gives a human-readable table of captured pages and artifact links. In `pages.jsonl`, artifact paths are relative to the capture root so the folder can be moved.
 
 ## JSON Policy
 

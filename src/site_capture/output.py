@@ -43,6 +43,14 @@ def page_dir_name(url: str) -> str:
     return f"{slug[:64]}-{digest}"
 
 
+def default_output_dir(url: str, *, command: str) -> Path:
+    parsed = urlparse(url)
+    host = parsed.netloc or "site"
+    safe_host = re.sub(r"[^a-zA-Z0-9]+", "-", host).strip("-").lower() or "site"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Path("captures") / f"{safe_host}-{command}-{stamp}"
+
+
 def result_from_meta(path: Path) -> CaptureResult:
     data = read_json(path)
     result = CaptureResult(

@@ -7,13 +7,20 @@ import time
 from pathlib import Path
 
 from . import __version__
-from .discovery import DiscoveryResult, discover_urls, filter_http_urls, normalize_url
+from .discovery import discover_urls, filter_http_urls, normalize_url
 from .drivers.playwriter import PlaywriterDriver
 from .drivers.playwriter import doctor as playwriter_doctor
 from .drivers.playwright_driver import PlaywrightDriver
 from .drivers.playwright_driver import doctor as playwright_doctor
 from .models import CaptureJob, CaptureResult, RenderOptions, VALID_FORMATS
-from .output import now_iso, page_dir_name, read_json, result_from_meta, write_json, write_jsonl
+from .output import default_output_dir, now_iso, page_dir_name, relative_to, result_from_meta, write_json, write_jsonl
+
+
+class SmartDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def _get_help_string(self, action: argparse.Action) -> str:
+        if action.default is None or action.default is argparse.SUPPRESS:
+            return action.help or ""
+        return super()._get_help_string(action)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,31 +48,37 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    formatter = SmartDefaultsHelpFormatter
     parser = argparse.ArgumentParser(
         prog="site-capture",
         description="Capture websites into screenshots, Markdown, HTML, and JSON ledgers for agent workflows.",
+        formatter_class=formatter,
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON to stdout.")
     parser.add_argument("--version", action="version", version=f"site-capture {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    doctor = subparsers.add_parser("doctor", help="Check local driver availability.")
+    doctor = subparsers.add_parser("doctor", help="Check local driver availability.", formatter_class=formatter)
     add_driver_common(doctor)
 
-    discover = subparsers.add_parser("discover", help="List candidate URLs from robots.txt and sitemap files.")
+    discover = subparsers.add_parser(
+        "discover",
+        help="List candidate URLs from robots.txt and sitemap files.",
+        formatter_class=formatter,
+    )
     discover.add_argument("url", help="Start URL.")
     discover.add_argument("--sitemap", help="Explicit sitemap URL.")
     discover.add_argument("--max-pages", type=int, default=200, help="Maximum URLs to emit.")
     discover.add_argument("--timeout", type=int, default=20, help="HTTP timeout in seconds for sitemap discovery.")
 
-    capture = subparsers.add_parser("capture", help="Capture one URL into a directory.")
+    capture = subparsers.add_parser("capture", help="Capture one URL into a directory.", formatter_class=formatter)
     capture.add_argument("url", help="URL to capture.")
-    capture.add_argument("--out", required=True, help="Output directory for the page artifacts.")
+    capture.add_argument("--out", help="Output directory for the page artifacts. Defaults to ./captures/<host>-capture-<timestamp>.")
     add_capture_options(capture)
 
-    crawl = subparsers.add_parser("crawl", help="Capture a bounded same-origin site crawl.")
+    crawl = subparsers.add_parser("crawl", help="Capture a bounded same-origin site crawl.", formatter_class=formatter)
     crawl.add_argument("url", help="Start URL.")
-    crawl.add_argument("--out", required=True, help="Output directory for the crawl artifacts.")
+    crawl.add_argument("--out", help="Output directory for the crawl artifacts. Defaults to ./captures/<host>-crawl-<timestamp>.")
     crawl.add_argument("--sitemap", help="Explicit sitemap URL.")
     crawl.add_argument("--max-pages", type=int, default=200, help="Maximum pages to capture.")
     crawl.add_argument("--timeout", type=int, default=20, help="HTTP timeout in seconds for sitemap discovery.")
@@ -133,6 +146,7 @@ def command_discover(args: argparse.Namespace) -> int:
         "count": len(result.urls),
         "sitemap_urls": result.sitemap_urls,
         "warnings": result.warnings,
+        "notices": result.notices,
     }
     return emit(args, payload, human=f"Discovered {len(result.urls)} URL(s).", code=0)
 
@@ -141,18 +155,23 @@ def command_capture(args: argparse.Namespace) -> int:
     formats = parse_formats(args.formats)
     driver = make_driver(args)
     render = render_options(args)
-    output_dir = Path(args.out).expanduser().resolve()
+    output_dir = resolved_output_dir(args.out, args.url, command="capture")
     try:
         result = driver.capture(CaptureJob(url=normalize_url(args.url), output_dir=output_dir, formats=formats, render=render))
     finally:
         driver.close()
-    payload = {"ok": result.ok, "result": result.to_dict(), "output_dir": str(output_dir)}
+    payload = {
+        "ok": result.ok,
+        "result": result.to_dict(),
+        "output_dir": str(output_dir),
+        "artifacts": artifact_paths(result, output_dir),
+    }
     return emit(args, payload, human=capture_human(result, output_dir), code=0 if result.ok else 1)
 
 
 def command_crawl(args: argparse.Namespace) -> int:
     formats = parse_formats(args.formats)
-    root = Path(args.out).expanduser().resolve()
+    root = resolved_output_dir(args.out, args.url, command="crawl")
     pages_root = root / "pages"
     pages_root.mkdir(parents=True, exist_ok=True)
     started_at = now_iso()
@@ -160,12 +179,12 @@ def command_crawl(args: argparse.Namespace) -> int:
     start_url = normalize_url(args.url)
     queue = list(discovery.urls)
     seen = set(queue)
-    results: list[CaptureResult] = []
+    captured_pages: list[tuple[CaptureResult, Path]] = []
     driver = make_driver(args)
     render = render_options(args)
     try:
         index = 0
-        while queue and len(results) < args.max_pages:
+        while queue and len(captured_pages) < args.max_pages:
             url = queue.pop(0)
             index += 1
             page_dir = pages_root / page_dir_name(url)
@@ -173,7 +192,7 @@ def command_crawl(args: argparse.Namespace) -> int:
             if meta_path.exists() and not args.force:
                 existing = result_from_meta(meta_path)
                 if existing.ok:
-                    results.append(existing)
+                    captured_pages.append((existing, page_dir))
                     print_progress(args, f"skip {url}")
                     for link in filter_links(existing.links, start_url, args.allow_off_origin):
                         if link not in seen and len(seen) < args.max_pages:
@@ -182,18 +201,20 @@ def command_crawl(args: argparse.Namespace) -> int:
                     continue
             print_progress(args, f"capture {index}/{args.max_pages} {url}")
             result = driver.capture(CaptureJob(url=url, output_dir=page_dir, formats=formats, render=render))
-            results.append(result)
+            captured_pages.append((result, page_dir))
             for link in filter_links(result.links, start_url, args.allow_off_origin):
                 if link not in seen and len(seen) < args.max_pages:
                     seen.add(link)
                     queue.append(link)
-            if args.delay_ms > 0 and queue and len(results) < args.max_pages:
+            if args.delay_ms > 0 and queue and len(captured_pages) < args.max_pages:
                 time.sleep(args.delay_ms / 1000)
     finally:
         driver.close()
 
-    rows = [result.to_dict() for result in results]
+    results = [result for result, _page_dir in captured_pages]
+    rows = [crawl_row(result, page_dir, root) for result, page_dir in captured_pages]
     write_jsonl(root / "pages.jsonl", rows)
+    write_crawl_index(root / "index.md", captured_pages, root)
     manifest = {
         "ok": all(result.ok for result in results),
         "tool": "site-capture",
@@ -209,9 +230,16 @@ def command_crawl(args: argparse.Namespace) -> int:
         "failed_count": sum(1 for result in results if not result.ok),
         "sitemap_urls": discovery.sitemap_urls,
         "warnings": discovery.warnings,
+        "notices": discovery.notices,
     }
     write_json(root / "manifest.json", manifest)
-    payload = {**manifest, "output_dir": str(root), "pages_jsonl": str(root / "pages.jsonl")}
+    payload = {
+        **manifest,
+        "output_dir": str(root),
+        "manifest": str(root / "manifest.json"),
+        "pages_jsonl": str(root / "pages.jsonl"),
+        "index_md": str(root / "index.md"),
+    }
     return emit(args, payload, human=crawl_human(payload), code=0 if payload["ok"] else 1)
 
 
@@ -248,6 +276,78 @@ def render_options(args: argparse.Namespace) -> RenderOptions:
         scroll_steps=args.scroll_steps,
         scroll_delay_ms=args.scroll_delay_ms,
     )
+
+
+def resolved_output_dir(value: str | None, url: str, *, command: str) -> Path:
+    path = Path(value).expanduser() if value else default_output_dir(normalize_url(url), command=command)
+    return path.resolve()
+
+
+def artifact_paths(result: CaptureResult, page_dir: Path, *, root: Path | None = None) -> dict[str, str]:
+    artifacts: dict[str, str] = {}
+    if result.screenshot:
+        artifacts["screenshot"] = artifact_path(page_dir / result.screenshot, root)
+    if result.markdown:
+        artifacts["markdown"] = artifact_path(page_dir / result.markdown, root)
+    if result.html:
+        artifacts["html"] = artifact_path(page_dir / result.html, root)
+    links = page_dir / "links.json"
+    if links.exists():
+        artifacts["links"] = artifact_path(links, root)
+    meta = page_dir / "meta.json"
+    if meta.exists():
+        artifacts["meta"] = artifact_path(meta, root)
+    return artifacts
+
+
+def crawl_row(result: CaptureResult, page_dir: Path, root: Path) -> dict[str, object]:
+    row = result.to_dict()
+    row["artifact_dir"] = relative_to(page_dir, root)
+    row["artifacts"] = artifact_paths(result, page_dir, root=root)
+    return row
+
+
+def artifact_path(path: Path, root: Path | None) -> str:
+    if root is None:
+        return str(path.resolve())
+    return str(relative_to(path, root))
+
+
+def write_crawl_index(path: Path, pages: list[tuple[CaptureResult, Path]], root: Path) -> None:
+    lines = [
+        "# Site Capture Index",
+        "",
+        f"Generated: {now_iso()}",
+        "",
+        "| Status | Title | URL | Artifacts |",
+        "| --- | --- | --- | --- |",
+    ]
+    for result, page_dir in pages:
+        artifacts = []
+        if result.markdown:
+            artifacts.append(f"[Markdown]({relative_to(page_dir / result.markdown, root)})")
+        if result.screenshot:
+            artifacts.append(f"[Screenshot]({relative_to(page_dir / result.screenshot, root)})")
+        if result.html:
+            artifacts.append(f"[HTML]({relative_to(page_dir / result.html, root)})")
+        artifacts.append(f"[Meta]({relative_to(page_dir / 'meta.json', root)})")
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    "ok" if result.ok else "failed",
+                    escape_table(result.title or ""),
+                    escape_table(result.final_url or result.url),
+                    ", ".join(artifacts),
+                ]
+            )
+            + " |"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def escape_table(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", " ")
 
 
 def parse_formats(value: str) -> set[str]:
