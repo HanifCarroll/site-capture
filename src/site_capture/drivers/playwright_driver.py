@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from site_capture.markdown import html_to_markdown
-from site_capture.models import CaptureJob, CaptureResult
+from site_capture.models import CaptureJob, CaptureResult, RenderOptions
 from site_capture.output import write_json
 
 
@@ -23,25 +23,37 @@ class PlaywrightDriver:
         self.channel = channel
         self._playwright = None
         self._context = None
+        self._render_key: tuple[object, ...] | None = None
 
-    def start(self) -> None:
-        if self._context is not None:
+    def start(self, render: RenderOptions | None = None) -> None:
+        render = render or RenderOptions()
+        render_key = render_context_key(render)
+        if self._context is not None and self._render_key == render_key:
             return
+        if self._context is not None:
+            self.close()
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
             raise RuntimeError("Playwright driver requires `pip install site-capture[playwright]` and `playwright install`.") from exc
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self._playwright = sync_playwright().start()
-        self._context = self._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(self.profile_dir),
-            channel=self.channel,
-            headless=self.headless,
-            viewport={"width": 1440, "height": 1200},
-        )
+        options: dict[str, object] = {
+            "user_data_dir": str(self.profile_dir),
+            "channel": self.channel,
+            "headless": self.headless,
+            "viewport": {"width": render.viewport_width, "height": render.viewport_height},
+            "device_scale_factor": render.device_scale_factor,
+            "is_mobile": render.is_mobile,
+            "has_touch": render.has_touch,
+        }
+        if render.user_agent:
+            options["user_agent"] = render.user_agent
+        self._context = self._playwright.chromium.launch_persistent_context(**options)
+        self._render_key = render_key
 
     def capture(self, job: CaptureJob) -> CaptureResult:
-        self.start()
+        self.start(job.render)
         assert self._context is not None
         job.output_dir.mkdir(parents=True, exist_ok=True)
         page = self._context.new_page()
@@ -111,6 +123,8 @@ class PlaywrightDriver:
             title=title,
             ok=ok,
             driver=self.name,
+            device=job.render.device,
+            viewport={"width": job.render.viewport_width, "height": job.render.viewport_height},
             screenshot=screenshot,
             markdown=markdown,
             html=html,
@@ -125,6 +139,7 @@ class PlaywrightDriver:
         if self._context is not None:
             self._context.close()
             self._context = None
+            self._render_key = None
         if self._playwright is not None:
             self._playwright.stop()
             self._playwright = None
@@ -144,3 +159,15 @@ def doctor() -> dict[str, object]:
         "available": True,
         "error": None,
     }
+
+
+def render_context_key(render: RenderOptions) -> tuple[object, ...]:
+    return (
+        render.device,
+        render.viewport_width,
+        render.viewport_height,
+        render.device_scale_factor,
+        render.is_mobile,
+        render.has_touch,
+        render.user_agent,
+    )

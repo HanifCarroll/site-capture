@@ -70,6 +70,11 @@ class PlaywriterDriver:
                 "width": job.render.viewport_width,
                 "height": job.render.viewport_height,
             },
+            "device": job.render.device,
+            "deviceScaleFactor": job.render.device_scale_factor,
+            "isMobile": job.render.is_mobile,
+            "hasTouch": job.render.has_touch,
+            "userAgent": job.render.user_agent,
             "gotoTimeoutMs": job.render.goto_timeout_ms,
             "loadTimeoutMs": job.render.load_timeout_ms,
             "waitMs": job.render.wait_ms,
@@ -126,6 +131,8 @@ class PlaywriterDriver:
                     title=data.get("title") if isinstance(data.get("title"), str) else None,
                     ok=bool(data.get("ok")),
                     driver=self.name,
+                    device=str(data.get("device") or job.render.device),
+                    viewport=data.get("viewport") if isinstance(data.get("viewport"), dict) else render_viewport(job),
                     screenshot=data.get("screenshot") if isinstance(data.get("screenshot"), str) else None,
                     markdown=data.get("markdown") if isinstance(data.get("markdown"), str) else None,
                     html=data.get("html") if isinstance(data.get("html"), str) else None,
@@ -137,6 +144,8 @@ class PlaywriterDriver:
             url=job.url,
             ok=False,
             driver=self.name,
+            device=job.render.device,
+            viewport=render_viewport(job),
             warnings=["playwriter did not return a SITE_CAPTURE_RESULT line"],
             error=stdout[-4000:] if stdout else "empty playwriter output",
         )
@@ -210,3 +219,7 @@ def parse_new_session_id(output: str) -> str | None:
     if len(lines) == 1 and re.match(r"^[A-Za-z0-9_.:-]+$", lines[0]):
         return lines[0]
     return None
+
+
+def render_viewport(job: CaptureJob) -> dict[str, int]:
+    return {"width": job.render.viewport_width, "height": job.render.viewport_height}

@@ -60,6 +60,8 @@ def result_from_meta(path: Path) -> CaptureResult:
         title=data.get("title") if isinstance(data.get("title"), str) else None,
         ok=bool(data.get("ok")),
         driver=str(data.get("driver") or ""),
+        device=str(data.get("device") or "desktop"),
+        viewport=data.get("viewport") if isinstance(data.get("viewport"), dict) else None,
         screenshot=data.get("screenshot") if isinstance(data.get("screenshot"), str) else None,
         markdown=data.get("markdown") if isinstance(data.get("markdown"), str) else None,
         html=data.get("html") if isinstance(data.get("html"), str) else None,

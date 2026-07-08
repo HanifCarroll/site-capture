@@ -15,8 +15,13 @@ FORMAT_ALIASES = {
 
 @dataclass(frozen=True)
 class RenderOptions:
+    device: str = "desktop"
     viewport_width: int = 1440
     viewport_height: int = 1200
+    device_scale_factor: float = 1.0
+    is_mobile: bool = False
+    has_touch: bool = False
+    user_agent: str | None = None
     goto_timeout_ms: int = 45000
     load_timeout_ms: int = 10000
     wait_ms: int = 500
@@ -40,6 +45,8 @@ class CaptureResult:
     title: str | None = None
     ok: bool = False
     driver: str = ""
+    device: str = "desktop"
+    viewport: dict[str, int] | None = None
     screenshot: str | None = None
     markdown: str | None = None
     html: str | None = None
@@ -56,6 +63,8 @@ class CaptureResult:
             "title": self.title,
             "ok": self.ok,
             "driver": self.driver,
+            "device": self.device,
+            "viewport": self.viewport,
             "screenshot": self.screenshot,
             "markdown": self.markdown,
             "html": self.html,

@@ -24,6 +24,28 @@ async function main() {
   if (job.viewport) {
     await capturePage.setViewportSize(job.viewport)
   }
+  try {
+    if (typeof context.newCDPSession === 'function' && job.viewport) {
+      const cdp = await context.newCDPSession(capturePage)
+      if (job.isMobile || job.hasTouch || job.userAgent) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: Number(job.viewport.width),
+          height: Number(job.viewport.height),
+          deviceScaleFactor: Number(job.deviceScaleFactor || 1),
+          mobile: Boolean(job.isMobile),
+        })
+        await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: Boolean(job.hasTouch) })
+        if (job.userAgent) {
+          await cdp.send('Network.setUserAgentOverride', { userAgent: job.userAgent })
+        }
+      } else {
+        await cdp.send('Emulation.clearDeviceMetricsOverride')
+        await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false })
+      }
+    }
+  } catch (err) {
+    warnings.push(`Device emulation issue: ${String(err && err.message ? err.message : err)}`)
+  }
 
   try {
     const response = await capturePage.goto(job.url, {
@@ -129,6 +151,8 @@ async function main() {
     status,
     title,
     ok,
+    device: job.device || 'desktop',
+    viewport: job.viewport || null,
     screenshot,
     markdown,
     html,

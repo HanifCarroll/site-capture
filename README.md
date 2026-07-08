@@ -46,6 +46,14 @@ site-capture crawl https://example.com \
   --formats screenshot,markdown
 ```
 
+Capture a mobile view:
+
+```sh
+site-capture crawl https://example.com \
+  --device mobile \
+  --out ./captures/example-mobile
+```
+
 Use an existing Playwriter session:
 
 ```sh
@@ -95,6 +103,8 @@ captures/example/
   "title": "Example",
   "ok": true,
   "driver": "playwriter",
+  "device": "desktop",
+  "viewport": {"width": 1440, "height": 1200},
   "screenshot": "page.png",
   "markdown": "page.md",
   "html": null,

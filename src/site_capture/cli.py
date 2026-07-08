@@ -15,6 +15,30 @@ from .drivers.playwright_driver import doctor as playwright_doctor
 from .models import CaptureJob, CaptureResult, FORMAT_ALIASES, RenderOptions, VALID_FORMATS
 from .output import default_output_dir, now_iso, page_dir_name, relative_to, result_from_meta, write_json, write_jsonl
 
+MOBILE_USER_AGENT = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+)
+
+DEVICE_PRESETS: dict[str, dict[str, object]] = {
+    "desktop": {
+        "viewport_width": 1440,
+        "viewport_height": 1200,
+        "device_scale_factor": 1.0,
+        "is_mobile": False,
+        "has_touch": False,
+        "user_agent": None,
+    },
+    "mobile": {
+        "viewport_width": 390,
+        "viewport_height": 844,
+        "device_scale_factor": 3.0,
+        "is_mobile": True,
+        "has_touch": True,
+        "user_agent": MOBILE_USER_AGENT,
+    },
+}
+
 
 class SmartDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def _get_help_string(self, action: argparse.Action) -> str:
@@ -96,13 +120,14 @@ def add_driver_common(parser: argparse.ArgumentParser) -> None:
 
 def add_capture_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--driver", choices=["playwriter", "playwright"], default="playwriter", help="Browser driver.")
+    parser.add_argument("--device", choices=sorted(DEVICE_PRESETS), default="desktop", help="Named device preset.")
     parser.add_argument(
         "--formats",
         default="screenshot,markdown",
         help="Comma-separated artifacts: screenshot, markdown, html. Aliases: md, png, all.",
     )
-    parser.add_argument("--viewport-width", type=positive_int, default=1440, help="Browser viewport width.")
-    parser.add_argument("--viewport-height", type=positive_int, default=1200, help="Browser viewport height.")
+    parser.add_argument("--viewport-width", type=positive_int, help="Override browser viewport width.")
+    parser.add_argument("--viewport-height", type=positive_int, help="Override browser viewport height.")
     parser.add_argument("--goto-timeout-ms", type=positive_int, default=45000, help="Navigation timeout.")
     parser.add_argument("--load-timeout-ms", type=positive_int, default=10000, help="Post-navigation load wait timeout.")
     parser.add_argument("--wait-ms", type=nonnegative_int, default=500, help="Extra wait before capture.")
@@ -179,6 +204,8 @@ def command_capture(args: argparse.Namespace) -> int:
         "result": result.to_dict(),
         "output_dir": str(output_dir),
         "artifacts": artifact_paths(result, output_dir),
+        "device": render.device,
+        "viewport": {"width": render.viewport_width, "height": render.viewport_height},
     }
     return emit(args, payload, human=capture_human(payload), code=0 if result.ok else 1)
 
@@ -239,6 +266,8 @@ def command_crawl(args: argparse.Namespace) -> int:
         "finished_at": now_iso(),
         "start_url": start_url,
         "driver": args.driver,
+        "device": render.device,
+        "viewport": {"width": render.viewport_width, "height": render.viewport_height},
         "formats": sorted(formats),
         "max_pages": args.max_pages,
         "page_count": len(results),
@@ -285,9 +314,17 @@ def make_driver(args: argparse.Namespace):
 
 
 def render_options(args: argparse.Namespace) -> RenderOptions:
+    preset = DEVICE_PRESETS[args.device]
+    viewport_width = args.viewport_width if args.viewport_width is not None else int(preset["viewport_width"])
+    viewport_height = args.viewport_height if args.viewport_height is not None else int(preset["viewport_height"])
     return RenderOptions(
-        viewport_width=args.viewport_width,
-        viewport_height=args.viewport_height,
+        device=args.device,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+        device_scale_factor=float(preset["device_scale_factor"]),
+        is_mobile=bool(preset["is_mobile"]),
+        has_touch=bool(preset["has_touch"]),
+        user_agent=preset["user_agent"] if isinstance(preset["user_agent"], str) else None,
         goto_timeout_ms=args.goto_timeout_ms,
         load_timeout_ms=args.load_timeout_ms,
         wait_ms=args.wait_ms,

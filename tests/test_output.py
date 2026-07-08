@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from argparse import Namespace
 from pathlib import Path
 
-from site_capture.cli import artifact_paths, crawl_row, nonnegative_int, parse_formats, positive_int
+from site_capture.cli import artifact_paths, crawl_row, nonnegative_int, parse_formats, positive_int, render_options
 from site_capture.models import CaptureResult
 from site_capture.output import page_dir_name
 
@@ -36,6 +37,24 @@ class OutputTests(unittest.TestCase):
             positive_int("0")
         with self.assertRaises(Exception):
             nonnegative_int("-1")
+
+    def test_render_options_uses_mobile_device_defaults(self) -> None:
+        args = Namespace(
+            device="mobile",
+            viewport_width=None,
+            viewport_height=None,
+            goto_timeout_ms=45000,
+            load_timeout_ms=10000,
+            wait_ms=500,
+            scroll_steps=2,
+            scroll_delay_ms=250,
+        )
+        render = render_options(args)
+        self.assertEqual(render.device, "mobile")
+        self.assertEqual(render.viewport_width, 390)
+        self.assertEqual(render.viewport_height, 844)
+        self.assertTrue(render.is_mobile)
+        self.assertTrue(render.has_touch)
 
 
 if __name__ == "__main__":
