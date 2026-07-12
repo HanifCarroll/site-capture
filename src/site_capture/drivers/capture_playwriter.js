@@ -73,19 +73,48 @@ async function main() {
     warnings.push(`Load wait issue: ${String(err && err.message ? err.message : err)}`)
   }
 
-  const scrollSteps = Number(job.scrollSteps || 0)
-  for (let i = 0; i < scrollSteps; i += 1) {
+  if (job.scrollEntirePage) {
     try {
-      await capturePage.mouse.wheel(0, 900)
-      await capturePage.waitForTimeout(Number(job.scrollDelayMs || 250))
+      await capturePage.evaluate(async delayMs => {
+        const step = Math.max(window.innerHeight * 0.8, 400)
+        for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+          window.scrollTo(0, y)
+          await new Promise(resolve => window.setTimeout(resolve, delayMs))
+        }
+      }, Number(job.scrollDelayMs || 250))
     } catch (err) {
-      warnings.push(`Scroll issue: ${String(err && err.message ? err.message : err)}`)
-      break
+      warnings.push(`Full-page scroll issue: ${String(err && err.message ? err.message : err)}`)
+    }
+  } else {
+    const scrollSteps = Number(job.scrollSteps || 0)
+    for (let i = 0; i < scrollSteps; i += 1) {
+      try {
+        await capturePage.mouse.wheel(0, 900)
+        await capturePage.waitForTimeout(Number(job.scrollDelayMs || 250))
+      } catch (err) {
+        warnings.push(`Scroll issue: ${String(err && err.message ? err.message : err)}`)
+        break
+      }
     }
   }
   try {
     await capturePage.evaluate(() => window.scrollTo(0, 0))
   } catch {}
+
+  for (const selector of job.removeSelectors || []) {
+    try {
+      const removedCount = await capturePage.$$eval(
+        selector,
+        elements => {
+          elements.forEach(element => element.remove())
+          return elements.length
+        },
+      )
+      if (removedCount === 0) warnings.push(`Remove selector matched no elements: ${selector}`)
+    } catch (err) {
+      warnings.push(`Remove selector issue for ${JSON.stringify(selector)}: ${String(err && err.message ? err.message : err)}`)
+    }
+  }
 
   try {
     title = await capturePage.title()

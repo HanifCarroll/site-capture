@@ -27,6 +27,8 @@ class RenderOptions:
     wait_ms: int = 500
     scroll_steps: int = 2
     scroll_delay_ms: int = 250
+    scroll_entire_page: bool = False
+    remove_selectors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

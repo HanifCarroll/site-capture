@@ -48,6 +48,8 @@ class OutputTests(unittest.TestCase):
             wait_ms=500,
             scroll_steps=2,
             scroll_delay_ms=250,
+            scroll_entire_page=True,
+            remove_selector=[".newsletter-modal"],
         )
         render = render_options(args)
         self.assertEqual(render.device, "mobile")
@@ -55,6 +57,8 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(render.viewport_height, 844)
         self.assertTrue(render.is_mobile)
         self.assertTrue(render.has_touch)
+        self.assertTrue(render.scroll_entire_page)
+        self.assertEqual(render.remove_selectors, (".newsletter-modal",))
 
 
 if __name__ == "__main__":

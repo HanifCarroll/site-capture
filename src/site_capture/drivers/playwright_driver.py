@@ -69,10 +69,32 @@ class PlaywrightDriver:
                 warnings.append(f"Load wait issue: {exc}")
             if job.render.wait_ms:
                 page.wait_for_timeout(job.render.wait_ms)
-            for _ in range(job.render.scroll_steps):
-                page.mouse.wheel(0, 900)
-                page.wait_for_timeout(job.render.scroll_delay_ms)
+            if job.render.scroll_entire_page:
+                page.evaluate(
+                    """async (delayMs) => {
+                        const step = Math.max(window.innerHeight * 0.8, 400);
+                        for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+                            window.scrollTo(0, y);
+                            await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+                        }
+                    }""",
+                    job.render.scroll_delay_ms,
+                )
+            else:
+                for _ in range(job.render.scroll_steps):
+                    page.mouse.wheel(0, 900)
+                    page.wait_for_timeout(job.render.scroll_delay_ms)
             page.evaluate("() => window.scrollTo(0, 0)")
+            for selector in job.render.remove_selectors:
+                try:
+                    removed_count = page.eval_on_selector_all(
+                        selector,
+                        "(elements) => { elements.forEach((element) => element.remove()); return elements.length; }",
+                    )
+                    if removed_count == 0:
+                        warnings.append(f"Remove selector matched no elements: {selector}")
+                except Exception as exc:  # noqa: BLE001 - invalid optional selectors should not discard the capture.
+                    warnings.append(f"Remove selector issue for {selector!r}: {exc}")
         except Exception as exc:  # noqa: BLE001 - keep partial artifacts where possible.
             error = str(exc)
             warnings.append(f"Navigation issue: {exc}")
@@ -170,4 +192,6 @@ def render_context_key(render: RenderOptions) -> tuple[object, ...]:
         render.is_mobile,
         render.has_touch,
         render.user_agent,
+        render.scroll_entire_page,
+        render.remove_selectors,
     )

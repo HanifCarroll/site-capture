@@ -80,6 +80,8 @@ class PlaywriterDriver:
             "waitMs": job.render.wait_ms,
             "scrollSteps": job.render.scroll_steps,
             "scrollDelayMs": job.render.scroll_delay_ms,
+            "scrollEntirePage": job.render.scroll_entire_page,
+            "removeSelectors": list(job.render.remove_selectors),
         }
         temp_script.write_text(
             f"globalThis.SITE_CAPTURE_JOB_OBJECT = {json.dumps(payload)};\n{base_script}",

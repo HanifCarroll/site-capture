@@ -133,6 +133,17 @@ def add_capture_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--wait-ms", type=nonnegative_int, default=500, help="Extra wait before capture.")
     parser.add_argument("--scroll-steps", type=nonnegative_int, default=2, help="Scroll passes to trigger lazy content.")
     parser.add_argument("--scroll-delay-ms", type=nonnegative_int, default=250, help="Delay after each scroll pass.")
+    parser.add_argument(
+        "--scroll-entire-page",
+        action="store_true",
+        help="Traverse the full rendered document to settle lazy content and scroll-triggered states.",
+    )
+    parser.add_argument(
+        "--remove-selector",
+        action="append",
+        default=[],
+        help="CSS selector to remove after rendering and before artifacts are written. Repeat for multiple selectors.",
+    )
     parser.add_argument("--playwriter-command", default="playwriter", help="Playwriter command path.")
     parser.add_argument("--session", default="auto", help="Playwriter session ID, or auto to create one.")
     parser.add_argument("--playwriter-timeout-ms", type=positive_int, default=90000, help="Playwriter execution timeout.")
@@ -330,6 +341,8 @@ def render_options(args: argparse.Namespace) -> RenderOptions:
         wait_ms=args.wait_ms,
         scroll_steps=args.scroll_steps,
         scroll_delay_ms=args.scroll_delay_ms,
+        scroll_entire_page=bool(getattr(args, "scroll_entire_page", False)),
+        remove_selectors=tuple(getattr(args, "remove_selector", [])),
     )
 
 

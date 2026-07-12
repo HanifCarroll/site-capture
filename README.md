@@ -54,6 +54,25 @@ site-capture crawl https://example.com \
   --out ./captures/example-mobile
 ```
 
+Remove a rendered overlay from both screenshots and rendered HTML with exact selectors:
+
+```sh
+site-capture capture https://example.com \
+  --formats screenshot,html \
+  --remove-selector '.newsletter-modal' \
+  --remove-selector '#tracking-sandbox'
+```
+
+Missing or invalid removal selectors are reported as warnings. The capture tool does not infer substitute selectors.
+
+For visual baselines and rendered HTML copies, settle lazy content and scroll-triggered states across the complete document:
+
+```sh
+site-capture capture https://example.com \
+  --formats screenshot,html \
+  --scroll-entire-page
+```
+
 Use an existing Playwriter session:
 
 ```sh
